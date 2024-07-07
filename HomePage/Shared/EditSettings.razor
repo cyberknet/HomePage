@@ -1,0 +1,382 @@
+﻿@using HomePage.Data
+@inject SettingsService SettingsService
+@inject IDialogService DialogService
+
+<FluentCard class="settings">
+    <FluentNumberField TValue="int" value="@Settings.Columns" Min="1" Max="10" ValueChanged="@(newValue => HandleOnColumnChange(newValue))">
+        <FluentLabel Typo="Typography.Header">Columns</FluentLabel>
+    </FluentNumberField>
+
+    <FluentNumberField TValue="int" value="@Settings.Margin" Min="1" Max="10" ValueChanged="@(newValue => HandleOnMarginChange(newValue))">
+        <FluentLabel Typo="Typography.Header">Button Spacing</FluentLabel>
+    </FluentNumberField>
+
+    <FluentLabel Typo="Typography.Header">Categories</FluentLabel>
+
+    @if (categories != null && categories.Count() > 1)
+    {
+        <FluentSwitch @bind-Value=@sortCategories Label="Reorder Categories">
+        </FluentSwitch>
+    }
+    <br/>
+    @if (sortCategories)
+    {
+        <FluentSortableList Handle="true" Items="Settings.Categories" OnUpdate="@HandleSortCategoryList" Context="item">
+            <ItemTemplate>
+                <div class="sortable-grab">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.ArrowSort())" />
+                </div>
+                <div class="sortable-item-content" style="flex-grow: 1;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+                        <FluentLabel Typo="Typography.Subject">@item.Name</FluentLabel>
+                        <FluentButton Title="Edit" OnClick="@(() => EditCategory(item))">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.Edit())" />
+                        </FluentButton>
+                        <FluentButton Title="Delete" OnClick="@(() => DeleteCategory(item))">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.Delete())" Color="Color.Error" />
+                        </FluentButton>
+                    </FluentStack>
+                </div>
+            </ItemTemplate>
+        </FluentSortableList>
+    }
+    else
+    {
+        <FluentButton Title="Add" OnClick="@(() => AddCategory())">
+            <FluentIcon Value="@(new Icons.Regular.Size16.Add())" Color="Color.Accent" /> Add Category
+        </FluentButton>
+        if (categories != null)
+        {
+            <FluentDataGrid TGridItem="Category" Items="categories">
+                <TemplateColumn Title="Name" Width="15%">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+                        <FluentLabel Typo="Typography.Body">@context.Name</FluentLabel>
+
+                        <FluentButton Title="Edit" OnClick="@(() => EditCategory(context))">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.Edit())" />
+                        </FluentButton>
+                        <FluentButton Title="Delete" OnClick="@(() => DeleteCategory(context))">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.Delete())" Color="Color.Error" />
+                        </FluentButton>
+                    </FluentStack>
+                </TemplateColumn>
+                <TemplateColumn Title="Buttons">
+                    <FluentButton Title="Add" OnClick="@(() => AddButton(context))">
+                        <FluentIcon Value="@(new Icons.Regular.Size16.Add())" Color="Color.Accent" /> Add Button
+                    </FluentButton>
+                    <FluentSortableList Handle="true" Items="context.Buttons" OnUpdate="@((args )=> HandleSortButtonsList(args, context.Buttons))" Context="item">
+                        <ItemTemplate>
+                            <div class="sortable-grab">
+                                <FluentIcon Value="@(new Icons.Regular.Size20.ArrowSort())" />
+                            </div>
+                            <div class="sortable-item-content" style="flex-grow: 1;">
+                                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+                                    <img src="@item.ImageUrl" height="32px" alt="@item.ImageUrl" width="32px" style="padding-right: 5px;" />
+                                    <FluentLabel Typo="Typography.Subject">@item.Name</FluentLabel>
+                                    <FluentButton Title="Edit" OnClick="@(() => EditButton(context, item))">
+                                        <FluentIcon Value="@(new Icons.Regular.Size16.Edit())" />
+                                    </FluentButton>
+                                    <FluentButton Title="Delete" OnClick="@(() => DeleteButton(item, context))">
+                                        <FluentIcon Value="@(new Icons.Regular.Size16.Delete())" Color="Color.Error" />
+                                    </FluentButton>
+                                </FluentStack>
+                            </div>
+                        </ItemTemplate>
+                    </FluentSortableList>
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+    }
+</FluentCard>
+@code {
+    [Parameter]
+    public Settings Settings { get; set; }
+    [Parameter]
+    public EventCallback<Settings> SettingsChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnColumnChange { get; set; }
+    [Parameter]
+    public EventCallback<Settings> OnSettingsChange { get; set; }
+
+    IQueryable<Category>? categories = null;
+    bool sortCategories = false;
+
+    protected override Task OnInitializedAsync()
+    {
+        if (Settings != null)
+            categories = Settings.Categories.AsQueryable();
+        return base.OnInitializedAsync();
+    }
+
+    private async Task HandleOnColumnChange(int newValue)
+    {
+        if (Settings != null)
+        {
+            Settings.Columns = newValue;
+            await OnSettingsChange.InvokeAsync(Settings);
+        }
+    }
+
+    private async Task HandleOnMarginChange(int newValue)
+    {
+        if (Settings != null)
+        {
+            Settings.Margin = newValue;
+            await OnSettingsChange.InvokeAsync(Settings);
+        }
+    }
+
+    #region Categories
+    private async void HandleSortCategoryList(FluentSortableListEventArgs args)
+    {
+        if (Settings is null || args is null || args.OldIndex == args.NewIndex)
+        {
+            return;
+        }
+        var oldIndex = args.OldIndex;
+        var newIndex = args.NewIndex;
+
+        var items = Settings.Categories;
+        var itemToMove = items[oldIndex];
+        items.RemoveAt(oldIndex);
+
+        if (newIndex < items.Count)
+        {
+            items.Insert(newIndex, itemToMove);
+        }
+        else
+        {
+            items.Add(itemToMove);
+        }
+        await OnSettingsChange.InvokeAsync(Settings);
+    }
+
+    private async void EditCategory(Category category)
+    {
+        string newCategoryName = category.Name;
+
+        string extraText = string.Empty;
+        while (true)
+        {
+            RenderFragment fragment =@<div><FluentLabel Typo="Typography.Body" Color="Color.Error">@extraText</FluentLabel> <FluentTextField @bind-Value=newCategoryName Label="Enter new name:" /></div>;
+
+            DialogParameters parameters = new DialogParameters { Title = "Change Category Name..." };
+
+            IDialogReference dialogInstance = await DialogService.ShowDialogAsync(fragment, parameters);
+
+            DialogResult result = await dialogInstance.Result;
+
+            if (!result.Cancelled)
+            {
+                newCategoryName = newCategoryName.Trim();
+
+                if (string.IsNullOrWhiteSpace(newCategoryName))
+                    extraText = "Category name cannot be empty or only spaces.";
+                else if (CategoryIdExists(newCategoryName, category))
+                    extraText = "Another category with that name already exists";
+                else if (Category.IsReservedId(newCategoryName))
+                    extraText = "The category name entered is reserved.";
+                else
+                {
+                    category.Name = newCategoryName;
+                    if (Settings != null)
+                        categories = Settings.Categories.AsQueryable();
+                    await OnSettingsChange.InvokeAsync(Settings);
+                    break;
+                }
+            }
+            
+        }
+    }
+
+    private async void AddCategory()
+    {
+        string newCategoryName = "New Category";
+        int attempt = 0;
+        while (true)
+        {
+            if (CategoryIdExists(newCategoryName, null))
+            {
+                attempt++;
+                newCategoryName = "New Category{attempt}";
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        string extraText = string.Empty;
+        while (true)
+        {
+            RenderFragment fragment =@<div><FluentLabel Typo="Typography.Body" Color="Color.Error">@extraText</FluentLabel> <FluentTextField @bind-Value=newCategoryName Label="Name:" /></div>   ;
+
+            DialogParameters parameters = new DialogParameters { Title = "Add New Category..." };
+
+            IDialogReference dialogInstance = await DialogService.ShowDialogAsync(fragment, parameters);
+
+            DialogResult result = await dialogInstance.Result;
+
+            if (result.Cancelled)
+            {
+                break;
+            }
+            else
+            {
+                newCategoryName = newCategoryName.Trim();
+
+                if (string.IsNullOrWhiteSpace(newCategoryName))
+                    extraText = "Category name cannot be empty or only spaces.";
+                else if (CategoryIdExists(newCategoryName))
+                    extraText = "A category with that name already exists";
+                else if (Category.IsReservedId(newCategoryName))
+                    extraText = "The category name entered is reserved.";
+                else
+                {
+                    Settings.Categories.Add(new Category { Name = newCategoryName });
+                    if (Settings != null)
+                        categories = Settings.Categories.AsQueryable();
+                    await OnSettingsChange.InvokeAsync(Settings);
+                    break;
+                }
+            }
+        }
+    }
+
+    private async void DeleteCategory(Category category)
+    {
+        RenderFragment fragment =@<div>Are you sure you want to delete category '@category.Name'?</div>;
+        DialogParameters parameters = new DialogParameters
+            {
+                Title = "Delete Category...",
+                PrimaryAction = "Yes",
+                SecondaryAction = "No"
+            };
+        IDialogReference dialogInstance = await DialogService.ShowDialogAsync(fragment, parameters);
+        DialogResult result = await dialogInstance.Result;
+        if (!result.Cancelled)
+        {
+            Settings.Categories.Remove(category);
+            if (Settings != null)
+                categories = Settings.Categories.AsQueryable();
+            await OnSettingsChange.InvokeAsync(Settings);
+        }
+    }
+    #endregion
+
+    #region Buttons
+    private async void HandleSortButtonsList(FluentSortableListEventArgs args, List<Button> items)
+    {
+        if (Settings is null || args is null || args.OldIndex == args.NewIndex)
+        {
+            return;
+        }
+
+        var oldIndex = args.OldIndex;
+        var newIndex = args.NewIndex;
+
+        var itemToMove = items[oldIndex];
+        items.RemoveAt(oldIndex);
+
+        if (newIndex < items.Count)
+        {
+            items.Insert(newIndex, itemToMove);
+        }
+        else
+        {
+            items.Add(itemToMove);
+        }
+        await OnSettingsChange.InvokeAsync(Settings);
+    }
+
+    public async Task AddButton(Category category)
+    {
+        Button button = new Button();
+        var result = await ShowEditButtonDialog("Add", button);
+        if (result != null)
+        {
+            category.Buttons.Add(button);
+            await OnSettingsChange.InvokeAsync(Settings);
+        }
+    }
+
+    public async Task EditButton(Category category, Button button)
+    {
+        var result = await ShowEditButtonDialog("Edit", button);
+        if (result != null)
+        {
+            await OnSettingsChange.InvokeAsync(Settings);
+        }
+    }
+
+
+
+    public async Task<Button?> ShowEditButtonDialog(string verb, Button button)
+    {
+        string name = button.Name;
+        string description = button.Description;
+        string url = button.Url;
+        string unproxiedUrl = button.UnproxiedUrl;
+        string imageUrl = button.ImageUrl;
+
+        Button edit = new Button
+            {
+                Name = button.Name,
+                Description = button.Description,
+                Url = button.Url,
+                UnproxiedUrl = button.UnproxiedUrl,
+                ImageUrl = button.ImageUrl
+            };
+
+        DialogParameters parameters = new DialogParameters
+            {
+                Title = $"{verb} Button...",
+                PreventDismissOnOverlayClick = true,
+                PreventScroll = true
+            };
+
+        IDialogReference dialogInstance = await DialogService.ShowDialogAsync<EditButtonDialog>(edit, parameters);
+
+        var result = await dialogInstance.Result;
+
+        if (!result.Cancelled && result.Data != null && result.Data is Button edited)
+        {
+            button.Name = edited.Name;
+            button.Description = edited.Description;
+            button.Url = edited.Url;
+            button.UnproxiedUrl = edited.UnproxiedUrl;
+            button.ImageUrl = edited.ImageUrl;
+            return button;
+        }
+        return null;
+    }
+
+    private async void DeleteButton(Button button, Category category)
+    {
+        RenderFragment fragment =@<div>Are you sure you want to delete button '@button.Name'?</div>;
+        DialogParameters parameters = new DialogParameters
+            {
+                Title = "Delete Button...",
+                PrimaryAction = "Yes",
+                SecondaryAction = "No"
+            };
+        IDialogReference dialogInstance = await DialogService.ShowDialogAsync(fragment, parameters);
+        DialogResult result = await dialogInstance.Result;
+        if (!result.Cancelled)
+        {
+            category.Buttons.Remove(button);
+            await OnSettingsChange.InvokeAsync(Settings);
+        }
+    }
+
+    private bool CategoryIdExists(string newName, Category category = null)
+    {
+        string newId = Category.GenerateId(newName);
+        foreach (var cat in Settings.Categories)
+            if ((cat.Id == newId) && (category is null || category != cat))
+                return true;
+        return false;
+    }
+    #endregion
+}

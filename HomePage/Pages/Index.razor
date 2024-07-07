@@ -1,0 +1,85 @@
+﻿@page "/"
+
+<PageTitle>Application Launcher</PageTitle>
+
+@using HomePage.Data
+@inject SettingsService SettingsService
+@inject IJSRuntime JSRuntime
+@inject IDialogService DialogService
+
+<FluentLayout>
+    <FluentHeader>
+        Application Launcher
+    </FluentHeader>
+    <FluentBodyContent>
+        @if (settings == null)
+        {
+            <p><em>Loading...</em></p>
+        }
+        else
+        {
+            <FluentTabs>
+                @foreach (var category in settings.Categories)
+                {
+                    <FluentTab Label="@category.Name" Id="@category.Id" class="appTab">
+                        <ButtonPanel Category="@category"/>
+                    </FluentTab>
+                }
+                <FluentTab Label="Settings" Id="settings">
+                    <EditSettings @bind-Settings="settings" OnSettingsChange="@HandleOnSettingsChange" />
+                </FluentTab>
+            </FluentTabs>
+
+
+        }
+        <FluentFooter>
+            @if (settings != null)
+            {
+                <p>@settings.Categories.SelectMany(c => c.Buttons).Count() Applications Loaded in @settings.Categories.Count Categories</p>
+            }
+        </FluentFooter>
+    </FluentBodyContent>
+</FluentLayout>
+<style>
+    .appTab {
+        padding-top: @(settings.Margin)vw;
+    }
+
+    .app {
+        width: @(buttonWidth)vw;
+        height: @(buttonWidth + 6)vw;
+        margin: 0 0 @(settings.Margin)vw @(settings.Margin)vw;
+    }
+
+    .settings {
+        width: @(100 - (settings.Margin * 2) - 1)vw;
+        margin: @(settings.Margin)vw @(settings.Margin)vw @(settings.Margin)vw @(settings.Margin)vw;
+    }
+</style>
+@code {
+    private double buttonWidth = 0;
+    private Settings settings = new Settings();
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = await SettingsService.GetAsync();
+        ColumnChanged();
+        StateHasChanged();
+    }
+
+    public void ColumnChanged()
+    {
+        double availableWidth = 100;
+        double marginUsage = (settings.Margin * (settings.Columns + 1)) + 1;
+        availableWidth -= marginUsage;
+        buttonWidth = (availableWidth) / settings.Columns;
+    }
+
+    public async Task HandleOnSettingsChange(Settings updates)
+    {
+        settings = updates;
+        ColumnChanged();
+        await SettingsService.SaveAsync(updates);
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,27 @@
+﻿@using HomePage.Data
+@foreach (var button in Category.Buttons)
+{
+    var style = $"background-image: url(\"{button.ImageUrl}\");";
+    if (string.IsNullOrWhiteSpace(button.ImageUrl))
+        style = string.Empty;
+    <FluentCard class="app" style="@style">
+        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center">
+            <a class="header" href="@button.Url" target="_blank">
+                <FluentLabel Typo="Typography.Header">@button.Name</FluentLabel>
+                <div class="logo">
+                </div>
+            </a>
+            <div class="footer">
+                <p class="description">@button.Description</p>
+                <a href="@button.UnproxiedUrl" target="_blank">Unproxied Link</a>
+            </div>
+
+
+        </FluentStack>
+    </FluentCard>
+}
+
+@code {
+    [Parameter]
+    public Category Category { get; set; } = null!;
+}

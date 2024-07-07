@@ -1,0 +1,214 @@
+﻿@using System.ComponentModel.DataAnnotations
+@using HomePage.Data
+@implements IDialogContentComponent<Button>
+
+<!-- Header -->
+<FluentDialogHeader ShowDismiss="true">
+    <FluentStack VerticalAlignment="VerticalAlignment.Center">
+        <FluentIcon Value="@(new Icons.Regular.Size24.WindowApps())" />
+        <FluentLabel Typo="Typography.PaneHeader">
+            @Dialog.Instance.Parameters.Title
+        </FluentLabel>
+    </FluentStack>
+</FluentDialogHeader>
+
+<!-- Body -->
+<FluentDialogBody>
+    <EditForm EditContext="@_editContext" FormName="button_edit">
+        <DataAnnotationsValidator />
+
+        <FluentTextField Name="edit_name"
+                         @bind-Value="@Content.Name"
+                         Label="Name"
+                         Required />
+        <FluentTextField Name="edit_description"
+                         @bind-Value="@Content.Description"
+                         Label="Description"
+                         Required />
+        <FluentTextField Name="edit_url"
+                         @bind-Value="@Content.Url"
+                         Label="Proxied Url"
+                         Required />
+        <FluentTextField Name="edit_unproxiedUrl"
+                         @bind-Value="@Content.UnproxiedUrl"
+                         Label="Unproxied Url"
+                         Required />
+        <FluentStack Orientation="Orientation.Vertical">
+            <FluentSelect Items="@images"
+                          OptionText="@(i => i.Filename)"
+                          OptionValue="@(i => i.Url)"
+                          @bind-Value="@Content.ImageUrl"
+                          Label="Button Image"
+                          Height="20em">
+                <OptionTemplate Context="imageContext">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+                        <img src="@imageContext.Url" width="32px" height="32px" />
+                        <span>@imageContext.Filename</span>
+                    </FluentStack>
+                </OptionTemplate>
+            </FluentSelect>
+            @if (Content.ImageUrl != null)
+            {
+                <img src="@Content.ImageUrl" width="64px" height="64px" alt="@Content.ImageUrl" />
+            }
+            <FluentInputFile @ref="@fileUpload"
+                             AnchorId="UploadButton"
+                             DragDropZoneVisible="false"
+                             Mode="InputFileMode.Stream"
+                             Multiple="false"
+                             MaximumFileSize="@(20 * 1024 * 1024)"
+                             MaximumFileCount="1"
+                             Accept="@("." + String.Join(", ", extensions))"
+                             OnFileUploaded="@OnFileUploadedAsync"
+                             OnCompleted="@OnCompleted" />
+
+            <FluentProgress Min="0" Max="100" Value="@progressPercent" Visible="@(progressPercent > 0)" />
+            <FluentLabel Alignment="HorizontalAlignment.Center">
+                @progressTitle
+            </FluentLabel>
+
+            <FluentButton Appearance="Appearance.Accent" Id="UploadButton">
+                Upload New Image
+            </FluentButton>
+
+        </FluentStack>
+        <div style="color: var(--error);">
+            <FluentValidationSummary />
+        </div>
+    </EditForm>
+</FluentDialogBody>
+
+<!-- Footer -->
+<FluentDialogFooter>
+    <FluentButton Appearance="Appearance.Accent"
+                  Disabled="@(!_editContext.Validate())"
+                  OnClick="@SaveAsync">
+        OK
+    </FluentButton>
+    <FluentButton Appearance="Appearance.Neutral"
+                  OnClick="@CancelAsync">
+        Cancel
+    </FluentButton>
+</FluentDialogFooter>
+
+@code
+{
+    private EditContext _editContext = default!;
+    private List<ButtonImage> images = new();
+
+    [CascadingParameter]
+    public FluentDialog Dialog { get; set; } = default!;
+
+    [Parameter]
+    public Button Content { get; set; } = default!;
+
+
+    private static string imageDirectory = "wwwroot/images/";
+
+    private static string[] extensions = new string[]
+    {
+        ".png",
+        ".jpg",
+        ".svg",
+        ".jpeg",
+        ".webp",
+        ".gif"
+    };
+
+    FluentInputFile? fileUpload = default!;
+    int? progressPercent;
+    string? progressTitle;
+    List<string> Files = new();
+
+    protected override void OnInitialized()
+    {
+        _editContext = new EditContext(Content);
+        ReloadImages();
+    }
+
+    private void ReloadImages()
+    {
+        if (Directory.Exists(imageDirectory))
+        {
+            var foundImages = (from file in Directory.EnumerateFiles(imageDirectory)
+                               where extensions.Contains(Path.GetExtension(file).ToLower())
+                               orderby GetUrlFromFilename(file) ascending
+                               select new ButtonImage
+                                   {
+                                       Url = GetUrlFromFilename(file),
+                                       Filename = Path.GetFileName(file)
+                                   }).ToArray();
+
+            if (foundImages != null && foundImages.Length > 0)
+                images.AddRange(foundImages);
+            StateHasChanged();
+        }
+    }
+
+    private string GetUrlFromFilename(string filename)
+    {
+        return "/" + Path.GetRelativePath("wwwroot/", filename).Replace(@"\", "/");
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editContext.Validate())
+        {
+            await Dialog.CloseAsync(Content);
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        await Dialog.CancelAsync();
+    }
+
+    async Task OnFileUploadedAsync(FluentInputFileEventArgs file)
+    {
+        string filename = Path.Combine(imageDirectory, file.Name);
+
+        progressPercent = file.ProgressPercent;
+        progressTitle = file.ProgressTitle;
+
+
+
+        if (File.Exists(filename))
+        {
+            int num = 0;
+            string filenameWithoutExtension = Path.GetFileNameWithoutExtension(file.Name);
+            string extension = Path.GetExtension(file.Name);
+
+            do
+            {
+                num += 1;
+                filename = Path.Combine(imageDirectory, $"{filenameWithoutExtension}-{num}{extension}");
+            } while (File.Exists(filename));
+
+        }
+        Files.Add(filename);
+
+        await using FileStream fs = new(filename, FileMode.Create);
+        await file.Stream!.CopyToAsync(fs);
+        await file.Stream!.DisposeAsync();
+    }
+
+    void OnCompleted(IEnumerable<FluentInputFileEventArgs> files)
+    {
+        progressPercent = fileUpload!.ProgressPercent;
+        progressTitle = fileUpload!.ProgressTitle;
+
+        ReloadImages();
+        Content.ImageUrl = GetUrlFromFilename(Files.First());
+        StateHasChanged();
+        Files.Clear();
+    }
+
+
+    class ButtonImage
+    {
+        public string Url { get; set; }
+        public string Filename { get; set; }
+    }
+
+
+}
